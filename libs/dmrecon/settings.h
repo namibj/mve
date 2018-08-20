@@ -39,7 +39,7 @@ struct Settings
     int scale = 0;
     bool useColorScale = true;
     bool writePlyFile = false;
-	bool keepViewIndicesPerPixel = false;
+	bool keepViewIndicesPerPixel = true;
 
     /** Features outside the AABB are ignored. */
     math::Vec3f aabbMin = math::Vec3f(-std::numeric_limits<float>::max());
