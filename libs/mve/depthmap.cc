@@ -318,9 +318,11 @@ depthmap_triangulate (FloatImage::ConstPtr dm, math::Matrix3f const& invproj,
 }
 
 /* ---------------------------------------------------------------- */
+
 TriangleMesh::Ptr
-depthmap_triangulate(FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
-	math::Matrix3f const& invproj, IntImage::ConstPtr vi, float dd_factor)
+depthmap_triangulate (FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
+	math::Matrix3f const& invproj, float dd_factor,
+	mve::IntImage::ConstPtr vi, mve::Image<unsigned int>* vertex_ids)
 {
     if (dm == nullptr)
         throw std::invalid_argument("Null depthmap given");
@@ -334,7 +336,7 @@ depthmap_triangulate(FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
 	if (vi != nullptr && (vi->width() != width || vi->height() != height))
 		throw std::invalid_argument("View ID image dimension mismatch");
 
-    /* Triangulate depth map. */
+	/* Triangulate depth map. */
 	mve::Image<unsigned int> vids;
     mve::TriangleMesh::Ptr mesh;
 	mesh = mve::geom::depthmap_triangulate(dm, invproj, dd_factor, &vids);
@@ -389,6 +391,10 @@ depthmap_triangulate(FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
 		colors[vids[i]] = color / 255.0f;
 	}
 
+    /* Provide the vertex ID mapping if requested. */
+    if (vertex_ids != nullptr)
+        std::swap(vids, *vertex_ids);
+
     return mesh;
 }
 
@@ -396,7 +402,8 @@ depthmap_triangulate(FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
 
 TriangleMesh::Ptr
 depthmap_triangulate (FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
-	CameraInfo const& cam, IntImage::ConstPtr vi, float dd_factor)
+    CameraInfo const& cam, float dd_factor,
+	IntImage::ConstPtr vi, mve::Image<unsigned int>* vertex_ids)
 {
     if (dm == nullptr)
         throw std::invalid_argument("Null depthmap given");
@@ -407,7 +414,7 @@ depthmap_triangulate (FloatImage::ConstPtr dm, ByteImage::ConstPtr ci,
     math::Matrix3f invproj;
     cam.fill_inverse_calibration(*invproj, dm->width(), dm->height());
     mve::TriangleMesh::Ptr mesh;
-	mesh = mve::geom::depthmap_triangulate(dm, ci, invproj, vi, dd_factor);
+	mesh = mve::geom::depthmap_triangulate(dm, ci, invproj, dd_factor, vi, vertex_ids);
 
     /* Transform mesh to world coordinates. */
     math::Matrix4f ctw;
