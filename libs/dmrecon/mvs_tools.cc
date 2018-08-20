@@ -169,33 +169,41 @@ void
 getXYZColorAtPos(mve::ByteImage const& img, PixelCoords const& imgPos,
     Samples* color)
 {
-    int width = img.width();
-    int height = img.height();
     PixelCoords::const_iterator citPos;
     Samples::iterator itCol = color->begin();
 
     for (citPos = imgPos.begin(); citPos != imgPos.end(); ++citPos, ++itCol)
-    {
-        int const i = floor((*citPos)[0]);
-        int const j = floor((*citPos)[1]);
-        assert(i < width-1 && j < height-1);
+		*itCol = getXYZColorAtPos(img, *citPos);
+}
 
-        float const u = (*citPos)[0] - i;
-        float const v = (*citPos)[1] - j;
-        int const p0 = (j * width + i) * 3;
-        int const p1 = ((j+1) * width + i) * 3;
-        float x0, x1, x2, x3, x4, x5;
-        x0 = (1.f-u) * srgb2lin[img.at(p0  )] + u * srgb2lin[img.at(p0+3)];
-        x1 = (1.f-u) * srgb2lin[img.at(p0+1)] + u * srgb2lin[img.at(p0+4)];
-        x2 = (1.f-u) * srgb2lin[img.at(p0+2)] + u * srgb2lin[img.at(p0+5)];
-        x3 = (1.f-u) * srgb2lin[img.at(p1  )] + u * srgb2lin[img.at(p1+3)];
-        x4 = (1.f-u) * srgb2lin[img.at(p1+1)] + u * srgb2lin[img.at(p1+4)];
-        x5 = (1.f-u) * srgb2lin[img.at(p1+2)] + u * srgb2lin[img.at(p1+5)];
+math::Vec3f getXYZColorAtPos(mve::ByteImage const& img,
+	const math::Vec2f &pixelCoords)
+{
+	int width = img.width();
+	int height = img.height();
 
-        (*itCol)[0] = (1.f - v) * x0 + v * x3;
-        (*itCol)[1] = (1.f - v) * x1 + v * x4;
-        (*itCol)[2] = (1.f - v) * x2 + v * x5;
-    }
+	int const i = floor(pixelCoords[0]);
+	int const j = floor(pixelCoords[1]);
+	assert(i < width-1 && j < height-1);
+
+	float const u = pixelCoords[0] - i;
+	float const v = pixelCoords[1] - j;
+	int const p0 = (j * width + i) * 3;
+	int const p1 = ((j+1) * width + i) * 3;
+	float x0, x1, x2, x3, x4, x5;
+	x0 = (1.f-u) * srgb2lin[img.at(p0  )] + u * srgb2lin[img.at(p0+3)];
+	x1 = (1.f-u) * srgb2lin[img.at(p0+1)] + u * srgb2lin[img.at(p0+4)];
+	x2 = (1.f-u) * srgb2lin[img.at(p0+2)] + u * srgb2lin[img.at(p0+5)];
+	x3 = (1.f-u) * srgb2lin[img.at(p1  )] + u * srgb2lin[img.at(p1+3)];
+	x4 = (1.f-u) * srgb2lin[img.at(p1+1)] + u * srgb2lin[img.at(p1+4)];
+	x5 = (1.f-u) * srgb2lin[img.at(p1+2)] + u * srgb2lin[img.at(p1+5)];
+
+	math::Vec3f col;
+	col[0] = (1.f - v) * x0 + v * x3;
+	col[1] = (1.f - v) * x1 + v * x4;
+	col[2] = (1.f - v) * x2 + v * x5;
+
+	return col;
 }
 
 MVS_NAMESPACE_END

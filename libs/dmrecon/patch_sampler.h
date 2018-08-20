@@ -74,13 +74,15 @@ public:
     float getSSD(std::size_t v, math::Vec3f const& cs);
 
     /**  */
-    Samples const& getNeighColorSamples(std::size_t v);
+	Samples const& getNeighColorSamples(std::size_t v);
 
     /**  */
     std::size_t getNrSamples() const;
 
     /**  */
     math::Vec3f getPatchNormal() const;
+
+	bool getCenterVariance(float &variance, const IndexSet &viewSet);
 
     /**  */
     bool succeeded(std::size_t v) const;
@@ -91,6 +93,17 @@ public:
     /**  */
     float varInMasterPatch();
 
+private:
+	bool getNormalizedCenterColor(math::Vec3f &normalizedColor,
+		const std::size_t viewIdx);
+
+	mve::ByteImage::ConstPtr getNeighborImage(int &mipmapLevel,
+		const std::size_t v) const;
+
+	bool getMean(math::Vec3f &mean,
+		const std::size_t v);
+	bool getVariance(float &variance,
+		const math::Vec3f &mean, const std::size_t v);
 
 private:
     std::vector<SingleView::Ptr> const& views;

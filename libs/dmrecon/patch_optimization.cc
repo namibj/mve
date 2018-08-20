@@ -122,7 +122,7 @@ float PatchOptimization::computeConfidence()
 	// check angle between estimated surface normal and view direction
 	const math::Vec3f viewDir(refV->viewRayScaled(midx, midy));
 	const math::Vec3f normal(sampler->getPatchNormal());
-	const float dotP = - normal.dot(viewDir);
+	const float dotP = -normal.dot(viewDir);
 	if (dotP < 0.2f) // magic number 42
 		return 0.f;
 
@@ -144,6 +144,13 @@ float PatchOptimization::computeConfidence()
 		meanNCC = getMeanNCC(smallSampler);
 		if (meanNCC < settings.acceptNCC)
 			return 0.f;
+
+
+		float variance;
+		if (!smallSampler->getCenterVariance(variance, localVS.getSelectedIDs()))
+			return 0.f;
+		int tmp = 42;
+		++tmp;
 	}
 
 	// normalize meanNCC w.r.t. minimum required NCC

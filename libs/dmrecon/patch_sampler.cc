@@ -163,62 +163,6 @@ PatchSampler::getFastNCC(std::size_t v)
 }
 
 float
-PatchSampler::getNCC(std::size_t u, std::size_t v)
-{
-    if (neighColorSamples[u].empty())
-        computeNeighColorSamples(u);
-    if (neighColorSamples[v].empty())
-        computeNeighColorSamples(v);
-    if (!success[u] || !success[v])
-            return -1.f;
-
-    math::Vec3f meanX(0.f);
-    math::Vec3f meanY(0.f);
-    for (std::size_t i = 0; i < nrSamples; ++i)
-    {
-        meanX += neighColorSamples[u][i];
-        meanY += neighColorSamples[v][i];
-    }
-    meanX /= nrSamples;
-    meanY /= nrSamples;
-
-    float sqrDevX = 0.f;
-    float sqrDevY = 0.f;
-    float devXY = 0.f;
-    for (std::size_t i = 0; i < nrSamples; ++i)
-    {
-        sqrDevX += (neighColorSamples[u][i] - meanX).square_norm();
-        sqrDevY += (neighColorSamples[v][i] - meanY).square_norm();
-        devXY += (neighColorSamples[u][i] - meanX)
-            .dot(neighColorSamples[v][i] - meanY);
-    }
-
-    float tmp = sqrt(sqrDevX * sqrDevY);
-    if (tmp > 0)
-        return (devXY / tmp);
-    else
-        return -1.f;
-}
-
-float
-PatchSampler::getSAD(std::size_t v, math::Vec3f const& cs)
-{
-    if (neighColorSamples[v].empty())
-        computeNeighColorSamples(v);
-    if (!success[v])
-        return -1.f;
-
-    float sum = 0.f;
-    for (std::size_t i = 0; i < nrSamples; ++i) {
-        for (int c = 0; c < 3; ++c) {
-            sum += std::abs(cs[c] * neighColorSamples[v][i][c] -
-                masterColorSamples[i][c]);
-        }
-    }
-    return sum;
-}
-
-float
 PatchSampler::getSSD(std::size_t v, math::Vec3f const& cs)
 {
     if (neighColorSamples[v].empty())
@@ -294,102 +238,257 @@ PatchSampler::computePatchPoints()
     }
 }
 
-void
-PatchSampler::computeMasterSamples()
+float
+PatchSampler::getSAD(std::size_t v, math::Vec3f const& cs)
 {
+	if (neighColorSamples[v].empty())
+		computeNeighColorSamples(v);
+	if (!success[v])
+		return -1.f;
+
+	float sum = 0.f;
+	for (std::size_t i = 0; i < nrSamples; ++i) {
+		for (int c = 0; c < 3; ++c) {
+			sum += std::abs(cs[c] * neighColorSamples[v][i][c] -
+				masterColorSamples[i][c]);
+		}
+	}
+	return sum;
+}
+
+bool PatchSampler::getCenterVariance(float &variance, const IndexSet &viewSet)
+{
+	std::vector<math::Vec3f> normalizedColors;
+	normalizedColors.reserve(viewSet.size() + 1);
+
+	// get normalized colors of center pixels of images from viewSet
+	math::Vec3f normalizedColor;
+	for (IndexSet::const_iterator id = viewSet.begin(); id != viewSet.end(); ++id)
+	{
+		const int viewIdx = *id;
+		if (getNormalizedCenterColor(normalizedColor, viewIdx))
+			normalizedColors.push_back(normalizedColor);
+	}
+	if (getNormalizedCenterColor(normalizedColor, refVIdx))
+		normalizedColors.push_back(normalizedColor);
+
+	// get & check number of normalized colors
+	const std::size_t colorCount = normalizedColors.size();
+	if (colorCount <= 3) // magic number 42
+		return false;
+
+
+	// compute mean & variance of normalized colors
+	math::Vec3f meanOfCenter(0.0f, 0.0f, 0.0f);
+	for (std::size_t i = 0; i < colorCount; ++i)
+		meanOfCenter += normalizedColors[i];
+	meanOfCenter /= static_cast<float>(colorCount);
+
+	variance = 0.0f;
+	for (std::size_t i = 0; i < colorCount; ++i)
+		variance += (normalizedColors[i] - meanOfCenter).square_norm();
+	variance /= static_cast<float>(colorCount);
+
+	return true;
+}
+
+bool PatchSampler::getNormalizedCenterColor(math::Vec3f &normalizedColor,
+	const std::size_t viewIdx)
+{
+	// get proper image
+	int mipmapLevel;
+	mve::ByteImage::ConstPtr img = getNeighborImage(mipmapLevel, viewIdx);
+	if (!img)
+		return false;
+
+	// get mean color & variance
+	math::Vec3f mean;
+	float variance;
+	if (!getMean(mean, viewIdx))
+		return false;
+	if (!getVariance(variance, mean, viewIdx))
+		return false;
+
+	// get center color
+	const math::Vec3f &centerWS = patchPoints[nrSamples/2];
+	const math::Vec2f centerVS = views[viewIdx]->worldToScreen(centerWS, mipmapLevel);
+	const math::Vec3f color = getXYZColorAtPos(*img, centerVS);
+
+	// normalize color
+	normalizedColor = (color - mean) / (variance); // todo magic constant 42
+	return true;
+}
+
+float PatchSampler::getNCC(std::size_t u, std::size_t v)
+{
+	math::Vec3f meanX;
+	math::Vec3f meanY;
+	float varX;
+	float varY;
+
+	if (!getMean(meanX, u))
+		return -1.f;
+	getVariance(varX, meanX, u);
+
+	if (!getMean(meanY, v))
+		return -1.f;
+	getVariance(varY, meanY, v);
+
+	// cross variance
+	float crossVariance = 0.f;
+	for (std::size_t i = 0; i < nrSamples; ++i)
+		crossVariance += (neighColorSamples[u][i] - meanX).dot(neighColorSamples[v][i] - meanY);
+	crossVariance /= nrSamples;
+
+	// cross correlation
+	const float denominator = sqrt(varX * varY);
+	if (denominator > 0)
+		return (crossVariance / denominator);
+	else
+		return -1.f;
+}
+
+bool PatchSampler::getMean(math::Vec3f &mean,
+	const std::size_t v)
+{
+	if (neighColorSamples[v].empty())
+		computeNeighColorSamples(v);
+	if (!success[v])
+		return false;
+
+	mean = math::Vec3f(0.f, 0.f, 0.f);
+	for (std::size_t i = 0; i < nrSamples; ++i)
+		mean += neighColorSamples[v][i];
+	mean /= nrSamples;
+
+	return true;
+}
+
+bool PatchSampler::getVariance(float &variance,
+	const math::Vec3f &mean, const std::size_t v)
+{
+	if (neighColorSamples[v].empty())
+		computeNeighColorSamples(v);
+	if (!success[v])
+		return false;
+
+	variance = 0.f;
+	for (std::size_t i = 0; i < nrSamples; ++i)
+		variance += (neighColorSamples[v][i] - mean).square_norm();
+	variance /= nrSamples;
+
+	return true;
+}
+
+mve::ByteImage::ConstPtr PatchSampler::getNeighborImage(int &mipmapLevel,
+	const std::size_t v) const
+{
+	/* compute pixel prints and decide on which MipMap-Level to draw
+	   the samples */
+	const math::Vec3f &p0 = patchPoints[nrSamples/2];
 	SingleView::Ptr refV = views[refVIdx];
-    mve::ByteImage::ConstPtr img(refV->getScaledImg());
 
-    /* draw color samples from image and compute mean color */
-    std::size_t count = 0;
-    std::vector<math::Vec2i> imgPos(nrSamples);
-    for (int j = topLeft[1]; j <= bottomRight[1]; ++j)
-        for (int i = topLeft[0]; i <= bottomRight[0]; ++i)
-        {
-            imgPos[count][0] = i;
-            imgPos[count][1] = j;
-            ++count;
-        }
-    getXYZColorAtPix(*img, imgPos, &masterColorSamples);
+	const float mfp = refV->footPrintScaled(p0);
+	const float nfp = views[v]->footPrint(p0);
+	if (mfp <= 0.f)
+	{
+		std::cerr << "Error in computeNeighColorSamples! "
+				  << "footprint in master view: " << mfp << std::endl;
+		throw std::out_of_range("Negative pixel print");
+	}
+	if (nfp <= 0.f)
+		return nullptr;
 
-    masterMeanCol = 0.f;
-    for (std::size_t i = 0; i < nrSamples; ++i)
-        for (int c = 0; c < 3; ++c)
-        {
-            assert(masterColorSamples[i][c] >= 0 &&
-                masterColorSamples[i][c] <= 1);
-            masterMeanCol += masterColorSamples[i][c];
-        }
+	float ratio = nfp / mfp;
 
-    masterMeanCol /= 3.f * nrSamples;
-    if (masterMeanCol < 0.01f || masterMeanCol > 0.99f) {
-		success[refVIdx] = false;
-        return;
-    }
+	mipmapLevel = 0;
+	while (ratio < 0.5f)
+	{
+		++mipmapLevel;
+		ratio *= 2.f;
+	}
+	mipmapLevel = views[v]->clampLevel(mipmapLevel);
+	mve::ByteImage::ConstPtr img(views[v]->getPyramidImg(mipmapLevel));
 
-    meanX.fill(0.f);
-
-    /* normalize master samples so that average intensity over all
-       channels is 1 and compute mean color afterwards */
-    for (std::size_t i = 0; i < nrSamples; ++i)
-    {
-        masterColorSamples[i] /= masterMeanCol;
-        meanX += masterColorSamples[i];
-    }
-    meanX /= nrSamples;
-    sqrDevX = 0.f;
-
-    /* compute variance (independent from actual mean) */
-    for (std::size_t i = 0; i < nrSamples; ++i)
-        sqrDevX += (masterColorSamples[i] - meanX).square_norm();
+	return img;
 }
 
 void
 PatchSampler::computeNeighColorSamples(std::size_t v)
 {
+	Samples &colors = neighColorSamples[v];
+	PixelCoords &imgPositions = neighPosSamples[v];
+	success[v] = false;
+
+	int mipmapLevel;
+	mve::ByteImage::ConstPtr img = getNeighborImage(mipmapLevel, v);
+	if (!img)
+		return;
+
+	colors.resize(nrSamples);
+	imgPositions.resize(nrSamples);
+	int const w = img->width();
+	int const h = img->height();
+
+	for (std::size_t i = 0; i < nrSamples; ++i)
+	{
+		imgPositions[i] = views[v]->worldToScreen(patchPoints[i], mipmapLevel);
+		// imgPos should be away from image border
+		if (!(imgPositions[i][0] > 0 && imgPositions[i][0] < w-1 &&
+			imgPositions[i][1] > 0 && imgPositions[i][1] < h-1))
+				return;
+	}
+	getXYZColorAtPos(*img, imgPositions, &colors);
+	success[v] = true;
+}
+
+void PatchSampler::computeMasterSamples()
+{
 	SingleView::Ptr refV = views[refVIdx];
+	mve::ByteImage::ConstPtr img(refV->getScaledImg());
 
-    Samples & color = neighColorSamples[v];
-    PixelCoords & imgPos = neighPosSamples[v];
-    success[v] = false;
+	/* draw color samples from image and compute mean color */
+	std::size_t count = 0;
+	std::vector<math::Vec2i> imgPos(nrSamples);
+	for (int j = topLeft[1]; j <= bottomRight[1]; ++j)
+		for (int i = topLeft[0]; i <= bottomRight[0]; ++i)
+		{
+			imgPos[count][0] = i;
+			imgPos[count][1] = j;
+			++count;
+		}
+	getXYZColorAtPix(*img, imgPos, &masterColorSamples);
 
-    /* compute pixel prints and decide on which MipMap-Level to draw
-       the samples */
-    math::Vec3f const & p0 = patchPoints[nrSamples/2];
-    float mfp = refV->footPrintScaled(p0);
-    float nfp = views[v]->footPrint(p0);
-    if (mfp <= 0.f) {
-        std::cerr << "Error in computeNeighColorSamples! "
-                  << "footprint in master view: " << mfp << std::endl;
-        throw std::out_of_range("Negative pixel print");
-    }
-    if (nfp <= 0.f)
-        return;
-    float ratio = nfp / mfp;
+	masterMeanCol = 0.f;
+	for (std::size_t i = 0; i < nrSamples; ++i)
+		for (int c = 0; c < 3; ++c)
+		{
+			assert(masterColorSamples[i][c] >= 0 &&
+				masterColorSamples[i][c] <= 1);
+			masterMeanCol += masterColorSamples[i][c];
+		}
 
-    int mmLevel = 0;
-    while (ratio < 0.5f) {
-        ++mmLevel;
-        ratio *= 2.f;
-    }
-    mmLevel = views[v]->clampLevel(mmLevel);
-    mve::ByteImage::ConstPtr img(views[v]->getPyramidImg(mmLevel));
-    int const w = img->width();
-    int const h = img->height();
+	masterMeanCol /= 3.f * nrSamples;
+	if (masterMeanCol < 0.01f || masterMeanCol > 0.99f) {
+		success[refVIdx] = false;
+		return;
+	}
 
-    color.resize(nrSamples);
-    imgPos.resize(nrSamples);
+	meanX.fill(0.f);
 
-    for (std::size_t i = 0; i < nrSamples; ++i) {
-        imgPos[i] = views[v]->worldToScreen(patchPoints[i], mmLevel);
-        // imgPos should be away from image border
-        if (!(imgPos[i][0] > 0 && imgPos[i][0] < w-1 &&
-                imgPos[i][1] > 0 && imgPos[i][1] < h-1)) {
-            return;
-        }
-    }
-    getXYZColorAtPos(*img, imgPos, &color);
-    success[v] = true;
+	/* normalize master samples so that average intensity over all
+	   channels is 1 and compute mean color afterwards */
+	for (std::size_t i = 0; i < nrSamples; ++i)
+	{
+		masterColorSamples[i] /= masterMeanCol;
+		meanX += masterColorSamples[i];
+	}
+	meanX /= nrSamples;
+	sqrDevX = 0.f;
+
+	/* compute variance (independent from actual mean) */
+	for (std::size_t i = 0; i < nrSamples; ++i)
+		sqrDevX += (masterColorSamples[i] - meanX).square_norm();
 }
 
 PatchSampler::Ptr PatchSampler::create(const std::vector<SingleView::Ptr> &views,
@@ -405,7 +504,6 @@ PatchSampler::Ptr PatchSampler::create(const std::vector<SingleView::Ptr> &views
 	else
 		return ptr;
 }
-
 
 
 MVS_NAMESPACE_END

@@ -32,6 +32,8 @@ void getXYZColorAtPix(mve::ByteImage const& img,
 /** interpolate only color at given sample positions */
 void getXYZColorAtPos(mve::ByteImage const& img,
     PixelCoords const& imgPos, Samples* color);
+math::Vec3f getXYZColorAtPos(mve::ByteImage const& img,
+	const math::Vec2f &pixelCoords);
 
 /** Computes the parallax between two views with respect to some 3D point p */
 float parallax(math::Vec3f p, mvs::SingleView::Ptr v1, mvs::SingleView::Ptr v2);
