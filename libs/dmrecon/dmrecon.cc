@@ -292,49 +292,36 @@ DMRecon::processFeatures()
             continue;
 
         /* Start processing the feature. */
-        processed += 1;
+		++processed;
 
-        math::Vec2f pixPosF = refV->worldToScreenScaled(featPos);
-        int const x = math::round(pixPosF[0]);
-        int const y = math::round(pixPosF[1]);
-        float initDepth = (featPos - refV->camPos).norm();
+		const math::Vec2f pixPosF = refV->worldToScreenScaled(featPos);
+		const int x = math::round(pixPosF[0]);
+		const int y = math::round(pixPosF[1]);
+
+		const float initDepth = (featPos - refV->camPos).norm();
         PatchOptimization patch(views, settings, x, y, initDepth,
             0.f, 0.f, neighViews, IndexSet());
         patch.doAutoOptimization();
-        float conf = patch.computeConfidence();
-        if (conf <= 0.0f)
+
+		// valid result?
+		const float newConfidence = patch.computeConfidence();
+		if (newConfidence <= 0.0f)
             continue;
+		++success;
 
-        /* Feature depth optimization was successful. */
-        success += 1;
-        int const index = y * this->width + x;
-        float depth = patch.getDepth();
-        math::Vec3f normal = patch.getNormal();
-        if (refV->confImg->at(index) < conf)
-        {
-            if (refV->confImg->at(index) <= 0)
-                ++progress.filled;
+		// worse than previous result?
+		const int centerIdx = y * this->width + x;
+		const float refVConfidence = refV->confImg->at(centerIdx);
+		if (newConfidence <= refVConfidence)
+			continue;
 
-            refV->depthImg->at(index) = depth;
-            refV->normalImg->at(index, 0) = normal[0];
-            refV->normalImg->at(index, 1) = normal[1];
-            refV->normalImg->at(index, 2) = normal[2];
-            refV->dzImg->at(index, 0) = patch.getDzI();
-            refV->dzImg->at(index, 1) = patch.getDzJ();
-            refV->confImg->at(index) = conf;
-			if (settings.keepViewIndicesPerPixel)
-				storeViewIndices(refV, index, patch);
+		if (refVConfidence <= 0)
+			++progress.filled;
 
-            QueueData tmpData;
-            tmpData.confidence = conf;
-            tmpData.depth = depth;
-            tmpData.dz_i = patch.getDzI();
-            tmpData.dz_j = patch.getDzJ();
-            tmpData.localViewIDs = patch.getLocalViewIDs();
-            tmpData.x = x;
-            tmpData.y = y;
-            prQueue.push(tmpData);
-        }
+		updateReferenceView(refV, patch, newConfidence, centerIdx, settings.keepViewIndicesPerPixel);
+
+		const QueueData data(x, y, newConfidence, patch.getDepth(), patch.getDzI(), patch.getDzJ(), patch.getLocalViewIDs());
+		prQueue.push(data);
     }
     if (!settings.quiet)
         std::cout << "Processed " << processed << " features, from which "
@@ -373,83 +360,99 @@ DMRecon::processQueue()
                           << std::endl;
             lastStatus = progress.filled;
         }
-        QueueData tmpData = prQueue.top();
+
+		QueueData startEstimate = prQueue.top();
         prQueue.pop();
-        ++count;
-        float x = tmpData.x;
-        float y = tmpData.y;
-        int index = y * this->width + x;
-        if (refV->confImg->at(index) > tmpData.confidence) {
-            continue ;
-        }
-        PatchOptimization patch(views, settings, x, y, tmpData.depth,
-            tmpData.dz_i, tmpData.dz_j, neighViews, tmpData.localViewIDs);
-        patch.doAutoOptimization();
-        tmpData.confidence = patch.computeConfidence();
-        if (tmpData.confidence == 0) {
-            continue;
-        }
+		++count;
+		const int centerIdx = startEstimate.getLinearIdx(this->width);
 
-        float new_depth = patch.getDepth();
-        tmpData.depth = new_depth;
-        tmpData.dz_i = patch.getDzI();
-        tmpData.dz_j = patch.getDzJ();
-        math::Vec3f normal = patch.getNormal();
-        tmpData.localViewIDs = patch.getLocalViewIDs();
-		if (refV->confImg->at(index) <= 0)
-		{
+		// next queue candidate is already worse than previous result at pixel index?
+		mve::Image<float>::Ptr confImg = refV->confImg;
+		const float refVConfidence = confImg->at(centerIdx);
+		const float startConfidence = startEstimate.confidence;
+		if (refVConfidence > startConfidence)
+			continue;
+
+		// optimize next best hypothesis
+		const float x = startEstimate.x;
+		const float y = startEstimate.y;
+		PatchOptimization patch(views, settings, x, y, startEstimate.depth,
+			startEstimate.dz_i, startEstimate.dz_j, neighViews, startEstimate.localViewIDs);
+		patch.doAutoOptimization();
+
+		// invalid result?
+		const float newConfidence = patch.computeConfidence();
+		if (newConfidence <= 0.0f)
+			continue;
+		// worse than previous result?
+		if (newConfidence <= refVConfidence)
+			continue;
+
+		// filled pixel for the first time?
+		if (refVConfidence <= 0)
             ++progress.filled;
-        }
-		if (refV->confImg->at(index) < tmpData.confidence)
-		{
-            refV->depthImg->at(index) = tmpData.depth;
-            refV->normalImg->at(index, 0) = normal[0];
-            refV->normalImg->at(index, 1) = normal[1];
-            refV->normalImg->at(index, 2) = normal[2];
-            refV->dzImg->at(index, 0) = tmpData.dz_i;
-            refV->dzImg->at(index, 1) = tmpData.dz_j;
-            refV->confImg->at(index) = tmpData.confidence;
-			if (settings.keepViewIndicesPerPixel)
-				storeViewIndices(refV, index, patch);
 
-            // left
-            tmpData.x = x - 1; tmpData.y = y;
-            index = tmpData.y * this->width + tmpData.x;
-            if (refV->confImg->at(index) < tmpData.confidence - 0.05f ||
-                refV->confImg->at(index) == 0.f)
-            {
-                prQueue.push(tmpData);
-            }
-            // right
-            tmpData.x = x + 1; tmpData.y = y;
-            index = tmpData.y * this->width + tmpData.x;
-            if (refV->confImg->at(index) < tmpData.confidence - 0.05f ||
-                refV->confImg->at(index) == 0.f)
-            {
-                prQueue.push(tmpData);
-            }
-            // top
-            tmpData.x = x; tmpData.y = y - 1;
-            index = tmpData.y * this->width + tmpData.x;
-            if (refV->confImg->at(index) < tmpData.confidence - 0.05f ||
-                refV->confImg->at(index) == 0.f)
-            {
-                prQueue.push(tmpData);
-            }
-            // bottom
-            tmpData.x = x; tmpData.y = y + 1;
-            index = tmpData.y * this->width + tmpData.x;
-            if (refV->confImg->at(index) < tmpData.confidence - 0.05f ||
-                refV->confImg->at(index) == 0.f)
-            {
-                prQueue.push(tmpData);
-            }
-        }
-    }
+		updateReferenceView(refV, patch, newConfidence, centerIdx, settings.keepViewIndicesPerPixel);
+
+		// extend queue to neighbors
+		{
+			const float minConfidence = newConfidence - 0.05f;
+			QueueData propagation(startEstimate.y, startEstimate.x,
+				newConfidence, patch.getDepth(), patch.getDzI(), patch.getDzJ(), patch.getLocalViewIDs());
+
+			// left
+			propagation.x = startEstimate.x - 1;
+			propagation.y = startEstimate.y;
+			const int leftIndex = propagation.getLinearIdx(this->width);
+			if (refV->confImg->at(leftIndex) < minConfidence  || refV->confImg->at(leftIndex) == 0.f)
+				prQueue.push(propagation);
+
+			// right
+			propagation.x = startEstimate.x + 1;
+			propagation.y = startEstimate.y;
+			const int rightIndex = propagation.getLinearIdx(this->width);
+			if (refV->confImg->at(rightIndex) < minConfidence || refV->confImg->at(rightIndex) == 0.f)
+				prQueue.push(propagation);
+
+			// top
+			propagation.x = startEstimate.x;
+			propagation.y = startEstimate.y - 1;
+			const int topIndex = propagation.getLinearIdx(this->width);
+			if (refV->confImg->at(topIndex) < minConfidence || refV->confImg->at(topIndex) == 0.f)
+				prQueue.push(propagation);
+
+			// bottom
+			propagation.x = startEstimate.x;
+			propagation.y = startEstimate.y + 1;
+			const int bottomIndex = propagation.getLinearIdx(this->width);
+			if (refV->confImg->at(bottomIndex) < minConfidence || refV->confImg->at(bottomIndex) == 0.f)
+				prQueue.push(propagation);
+		}
+	}
 }
 
-void
-DMRecon::storeViewIndices(const SingleView::Ptr &refV, const int &index, const PatchOptimization &patch)
+void DMRecon::updateReferenceView(SingleView::Ptr &refV,
+	const PatchOptimization &patch, const float confidence,
+	const int pixelIdx, const bool keepViewIndicesPerPixel)
+{
+	// update reference view with depth, normal, dz, confidence and view IDs
+	refV->depthImg->at(pixelIdx) = patch.getDepth();
+
+	const math::Vec3f normal = patch.getNormal();
+	refV->normalImg->at(pixelIdx, 0) = normal[0];
+	refV->normalImg->at(pixelIdx, 1) = normal[1];
+	refV->normalImg->at(pixelIdx, 2) = normal[2];
+
+	refV->dzImg->at(pixelIdx, 0) = patch.getDzI();
+	refV->dzImg->at(pixelIdx, 1) = patch.getDzJ();
+
+	refV->confImg->at(pixelIdx) = confidence;
+
+	if (keepViewIndicesPerPixel)
+		storeViewIndices(refV, pixelIdx, patch);
+}
+
+void DMRecon::storeViewIndices(const SingleView::Ptr &refV, const int index, const PatchOptimization &patch)
 {
 	// store store reference view ID
 	refV->viewIndicesImg->at(index, 0) = getRefViewNr();

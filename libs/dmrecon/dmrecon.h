@@ -27,14 +27,29 @@ MVS_NAMESPACE_BEGIN
 
 struct QueueData
 {
-    int x;
-    int y;
-    float confidence;
-    float depth;
-    float dz_i, dz_j;
-    IndexSet localViewIDs;
+public:
+	QueueData() : QueueData(-1, -1, 0.f, -1.f, 0.f, 0.f, IndexSet()) {}
+	QueueData(int pixelX, int pixelY, float conf, float depthEstimate, float dzI, float dzJ, const IndexSet &viewIDs) :
+		x(pixelX), y(pixelY),
+		confidence(conf),
+		depth(depthEstimate),
+		dz_i(dzI), dz_j(dzJ),
+		localViewIDs(viewIDs)
+	{
+
+	}
+
+	inline int getLinearIdx(const int width) const { return y * width + x; };
 
     bool operator< (const QueueData& rhs) const;
+
+public:
+	int x;
+	int y;
+	float confidence;
+	float depth;
+	float dz_i, dz_j;
+	IndexSet localViewIDs;
 };
 
 class DMRecon
@@ -48,8 +63,11 @@ public:
     void start();
 	
 private:
-	
-	void storeViewIndices(const SingleView::Ptr &refV, const int &index, const PatchOptimization &patch);
+
+	void storeViewIndices(const SingleView::Ptr &refV, const int index, const PatchOptimization &patch);
+	void updateReferenceView(SingleView::Ptr &refV,
+		const PatchOptimization &patch, const float confidence,
+		const int pixelIdx, const bool keepViewIndicesPerPixel);
 
 private:
     mve::Scene::Ptr scene;
