@@ -140,7 +140,7 @@ main (int argc, char** argv)
     args.add_option('i', "image", true,
         "specify source image embedding [undistorted]");
     args.add_option('\0', "local-neighbors", true,
-        "amount of neighbors for local view selection [4]");
+		"amount of neighbors for local view selection [6]");
     args.add_option('\0', "keep-dz", false,
         "store dz map into view");
     args.add_option('\0', "keep-conf", false,
