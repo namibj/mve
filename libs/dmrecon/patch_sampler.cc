@@ -17,10 +17,10 @@
 MVS_NAMESPACE_BEGIN
 
 PatchSampler::PatchSampler(std::vector<SingleView::Ptr> const& _views,
-    Settings const& _settings,
+	const int refViewIdx, const int filterWidth,
     int _x, int _y, float _depth, float _dzI, float _dzJ)
     : views(_views)
-    , settings(_settings)
+	, refVIdx(refViewIdx)
     , midPix(_x,_y)
     , masterMeanCol(0.f)
     , depth(_depth)
@@ -28,11 +28,11 @@ PatchSampler::PatchSampler(std::vector<SingleView::Ptr> const& _views,
     , dzJ(_dzJ)
     , success(views.size(), false)
 {
-    SingleView::Ptr refV(views[settings.refViewNr]);
+	SingleView::Ptr refV(views[refVIdx]);
     mve::ByteImage::ConstPtr masterImg(refV->getScaledImg());
 
-    offset = settings.filterWidth / 2;
-    nrSamples = sqr(settings.filterWidth);
+	offset = filterWidth / 2;
+	nrSamples = sqr(filterWidth);
 
     /* initialize arrays */
     patchPoints.resize(nrSamples);
@@ -56,7 +56,7 @@ PatchSampler::PatchSampler(std::vector<SingleView::Ptr> const& _views,
             masterViewDirs[count++] = refV->viewRayScaled(i, j);
 
     /* initialize master color samples and 3d patch points */
-    success[settings.refViewNr] = true;
+	success[refVIdx] = true;
     computeMasterSamples();
     computePatchPoints();
 }
@@ -65,7 +65,7 @@ void
 PatchSampler::fastColAndDeriv(std::size_t v, Samples& color, Samples& deriv)
 {
     success[v] = false;
-    SingleView::Ptr refV = views[settings.refViewNr];
+	SingleView::Ptr refV = views[refVIdx];
 
     PixelCoords& imgPos = neighPosSamples[v];
     imgPos.resize(nrSamples);
@@ -139,7 +139,7 @@ PatchSampler::getFastNCC(std::size_t v)
         computeNeighColorSamples(v);
     if (!success[v])
         return -1.f;
-    assert(success[settings.refViewNr]);
+	assert(success[refVIdx]);
     math::Vec3f meanY(0.f);
     for (std::size_t i = 0; i < nrSamples; ++i)
         meanY += neighColorSamples[v][i];
@@ -263,7 +263,7 @@ PatchSampler::update(float newDepth, float newDzI, float newDzJ)
     depth = newDepth;
     dzI = newDzI;
     dzJ = newDzJ;
-    success[settings.refViewNr] = true;
+	success[refVIdx] = true;
     computePatchPoints();
     neighColorSamples.clear();
     neighDerivSamples.clear();
@@ -273,7 +273,7 @@ PatchSampler::update(float newDepth, float newDzI, float newDzJ)
 void
 PatchSampler::computePatchPoints()
 {
-    SingleView::Ptr refV = views[settings.refViewNr];
+	SingleView::Ptr refV = views[refVIdx];
 
     unsigned int count = 0;
     for (int j = topLeft[1]; j <= bottomRight[1]; ++j)
@@ -284,7 +284,7 @@ PatchSampler::computePatchPoints()
                 (j - midPix[1]) * dzJ;
             if (tmpDepth <= 0.f)
             {
-                success[settings.refViewNr] = false;
+				success[refVIdx] = false;
                 return;
             }
             patchPoints[count] = refV->camPos + tmpDepth *
@@ -297,7 +297,7 @@ PatchSampler::computePatchPoints()
 void
 PatchSampler::computeMasterSamples()
 {
-    SingleView::Ptr refV = views[settings.refViewNr];
+	SingleView::Ptr refV = views[refVIdx];
     mve::ByteImage::ConstPtr img(refV->getScaledImg());
 
     /* draw color samples from image and compute mean color */
@@ -323,7 +323,7 @@ PatchSampler::computeMasterSamples()
 
     masterMeanCol /= 3.f * nrSamples;
     if (masterMeanCol < 0.01f || masterMeanCol > 0.99f) {
-        success[settings.refViewNr] = false;
+		success[refVIdx] = false;
         return;
     }
 
@@ -347,7 +347,7 @@ PatchSampler::computeMasterSamples()
 void
 PatchSampler::computeNeighColorSamples(std::size_t v)
 {
-    SingleView::Ptr refV = views[settings.refViewNr];
+	SingleView::Ptr refV = views[refVIdx];
 
     Samples & color = neighColorSamples[v];
     PixelCoords & imgPos = neighPosSamples[v];
@@ -391,6 +391,21 @@ PatchSampler::computeNeighColorSamples(std::size_t v)
     getXYZColorAtPos(*img, imgPos, &color);
     success[v] = true;
 }
+
+PatchSampler::Ptr PatchSampler::create(const std::vector<SingleView::Ptr> &views,
+	const int refViewIdx, const int filterWidth,
+	int x, int y, float depth, float dzI, float dzJ)
+{
+	// try to create the sampler
+	PatchSampler::Ptr ptr(new PatchSampler(views, refViewIdx, filterWidth, x, y, depth, dzI, dzJ));
+
+	// could the sampler be initialized properly?
+	if (!ptr->success[refViewIdx])
+		return nullptr;
+	else
+		return ptr;
+}
+
 
 
 MVS_NAMESPACE_END

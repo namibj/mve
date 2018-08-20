@@ -32,7 +32,8 @@ public:
     /** Constructor */
     PatchSampler(
         std::vector<SingleView::Ptr> const& _views,
-        Settings const& _settings,
+		const int refViewIdx,
+		const int filterWidth,
         int _x,          // pixel position
         int _y,
         float _depth,
@@ -40,9 +41,10 @@ public:
         float _dzJ);
 
     /** Smart pointer PatchSampler constructor. */
-    static PatchSampler::Ptr create(std::vector<SingleView::Ptr> const& views,
-        Settings const& settings, int x, int _y,
-        float _depth, float _dzI, float _dzJ);
+	static PatchSampler::Ptr create(std::vector<SingleView::Ptr> const& views,
+		const int refViewIdx, const int filterWidth,
+		int x, int _y,
+		float _depth, float _dzI, float _dzJ);
 
     /** Draw color samples and derivatives in neighbor view v */
     void fastColAndDeriv(std::size_t v, Samples & color,
@@ -92,7 +94,7 @@ public:
 
 private:
     std::vector<SingleView::Ptr> const& views;
-    Settings const& settings;
+	const int refVIdx;
 
     /** precomputed mean and variance for NCC */
     math::Vec3f meanX;
@@ -138,14 +140,6 @@ private:
 public:
     std::vector<bool> success;
 };
-
-inline PatchSampler::Ptr
-PatchSampler::create(std::vector<SingleView::Ptr> const& views, Settings const& settings,
-    int x, int y, float depth, float dzI, float dzJ)
-{
-    return PatchSampler::Ptr(new PatchSampler
-        (views, settings, x, y, depth, dzI, dzJ));
-}
 
 inline Samples const&
 PatchSampler::getMasterColorSamples() const

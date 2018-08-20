@@ -28,12 +28,12 @@ LocalViewSelection::LocalViewSelection(
     views(views),
     sampler(sampler)
 {
+	if (!sampler || !sampler->success[settings.refViewNr])
+		return;
+
     // inherited attribute
     this->selected = propagated;
 
-    if (!sampler->success[settings.refViewNr]) {
-        return;
-    }
     if (selected.size() == settings.nrReconNeighbors)
         success = true;
     else if (selected.size() > settings.nrReconNeighbors) {
@@ -44,13 +44,12 @@ LocalViewSelection::LocalViewSelection(
     available.clear();
     available.resize(views.size(), false);
     IndexSet::const_iterator id;
-    for (id = globalViewIDs.begin(); id != globalViewIDs.end(); ++id) {
+	for (id = globalViewIDs.begin(); id != globalViewIDs.end(); ++id)
         available[*id] = true;
-    }
+
     IndexSet::const_iterator sel;
-    for (sel = selected.begin(); sel != selected.end(); ++sel) {
+	for (sel = selected.begin(); sel != selected.end(); ++sel)
         available[*sel] = false;
-    }
 }
 
 void

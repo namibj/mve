@@ -55,6 +55,9 @@ public:
     void optimizeDepthAndNormal();
 
 private:
+	float getMeanNCC(PatchSampler::Ptr &sampler) const;
+
+private:
     std::vector<SingleView::Ptr> const& views;
     Settings const& settings;
     // initial values and settings

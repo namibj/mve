@@ -36,7 +36,8 @@ PatchOptimization::PatchOptimization(
     depth(_depth),
     dzI(_dzI),
     dzJ(_dzJ),
-    sampler(PatchSampler::create(views, settings, midx, midy, depth, dzI, dzJ)),
+	sampler(PatchSampler::create(views, settings.refViewNr, settings.filterWidth,
+				midx, midy, depth, dzI, dzJ)),
     ii(sqr(settings.filterWidth)),
     jj(sqr(settings.filterWidth)),
     localVS(views, settings, _globalViewIDs, _localViewIDs, sampler)
@@ -45,11 +46,11 @@ PatchOptimization::PatchOptimization(
     status.optiSuccess = true;
     status.converged = false;
 
-    if (!sampler->success[settings.refViewNr]) {
-        // Sampler could not be initialized properly
-        status.optiSuccess = false;
-        return;
-    }
+	if (!sampler)
+	{
+		status.optiSuccess = false;
+		return;
+	}
 
     std::size_t count = 0;
 
@@ -64,7 +65,8 @@ PatchOptimization::PatchOptimization(
         }
 
     localVS.performVS();
-    if (!localVS.success) {
+	if (!localVS.success)
+	{
         status.optiSuccess = false;
         return;
     }
@@ -110,39 +112,62 @@ PatchOptimization::computeColorScale()
     }
 }
 
-float
-PatchOptimization::computeConfidence()
+float PatchOptimization::computeConfidence()
 {
-    SingleView::Ptr refV = views[settings.refViewNr];
+	// no optimization result available?
+	SingleView::ConstPtr refV = views[settings.refViewNr];
     if (!status.converged)
         return 0.f;
 
-    /* Compute mean NCC between reference view and local neighbors,
-       where each NCC has to be higher than acceptance NCC */
-    float meanNCC = 0.f;
-    IndexSet const & neighIDs = localVS.getSelectedIDs();
-    IndexSet::const_iterator id;
-    for (id = neighIDs.begin(); id != neighIDs.end(); ++id) {
-        meanNCC += sampler->getFastNCC(*id);
-    }
-    meanNCC /= neighIDs.size();
+	// check angle between estimated surface normal and view direction
+	const math::Vec3f viewDir(refV->viewRayScaled(midx, midy));
+	const math::Vec3f normal(sampler->getPatchNormal());
+	const float dotP = - normal.dot(viewDir);
+	if (dotP < 0.2f) // magic number 42
+		return 0.f;
 
-    float score = (meanNCC - settings.acceptNCC) /
-                  (1.f - settings.acceptNCC);
+	// result which seems reliable?
+	float meanNCC = getMeanNCC(sampler);
+	if (meanNCC < settings.acceptNCC)
+		return 0.f;
 
-    /* Compute angle between estimated surface normal and view direction
-       and weight current score with dot product */
-    math::Vec3f viewDir(refV->viewRayScaled(midx, midy));
-    math::Vec3f normal(sampler->getPatchNormal());
-    float dotP = - normal.dot(viewDir);
-    if (dotP < 0.2f) {
-        return 0.f;
-    }
+	// avoid overestimation (false depth estimates outside the visible boundary of the object structure) using a smaller patch size
+	// if this truly is a good estimate then a smaller estimate must also have a good NCC score
+	if (settings.filterWidth > 3)
+	{
+		const int smallWidth = 3;
+		PatchSampler::Ptr smallSampler = PatchSampler::create(views, settings.refViewNr,
+			smallWidth, midx, midy, depth, dzI, dzJ);
+		if (!smallSampler)
+			return 0.f;
+
+		meanNCC = getMeanNCC(smallSampler);
+		if (meanNCC < settings.acceptNCC)
+			return 0.f;
+	}
+
+	// normalize meanNCC w.r.t. minimum required NCC
+	const float range = 1.f - settings.acceptNCC;
+	const float score = (meanNCC - settings.acceptNCC) / range;
+
     return score;
 }
 
-float
-PatchOptimization::derivNorm()
+float PatchOptimization::getMeanNCC(PatchSampler::Ptr &sampler) const
+{
+	// mean NCC between reference view and local neighbors
+	const IndexSet &neighIDs = localVS.getSelectedIDs();
+	if (neighIDs.empty())
+		return 0.f;
+
+	float meanNCC = 0.f;
+	for (IndexSet::const_iterator id = neighIDs.begin(); id != neighIDs.end(); ++id)
+		meanNCC += sampler->getFastNCC(*id);
+	meanNCC /= neighIDs.size();
+	return meanNCC;
+}
+
+float PatchOptimization::derivNorm()
 {
     IndexSet const & neighIDs = localVS.getSelectedIDs();
     IndexSet::const_iterator id;
