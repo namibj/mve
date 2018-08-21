@@ -50,6 +50,8 @@ public:
     void fastColAndDeriv(std::size_t v, Samples & color,
         Samples& deriv);
 
+	math::Vec3f getColorOfCenter(const std::size_t viewIdx) const;
+
     /** Compute NCC between reference view and a neighbor view */
     float getFastNCC(std::size_t v);
 
@@ -58,6 +60,9 @@ public:
 
     /**  */
     float getMasterMeanColor() const;
+
+	bool getMean(math::Vec3f &mean,
+		const std::size_t viewIdx);
 
     /**  */
     math::Vec3f const & getMidWorldPoint() const;
@@ -73,6 +78,9 @@ public:
         view and neighbor v with respect to color scale cs */
     float getSSD(std::size_t v, math::Vec3f const& cs);
 
+	bool getNCCCenter(math::Vec2f &distance, float &crossCorrelation,
+		const std::size_t viewIndices[2], const float EPSILON);
+
     /**  */
 	Samples const& getNeighColorSamples(std::size_t v);
 
@@ -80,9 +88,14 @@ public:
     std::size_t getNrSamples() const;
 
     /**  */
-    math::Vec3f getPatchNormal() const;
+	math::Vec3f getPatchNormal() const;
 
-	bool getCenterVariance(float &variance, const IndexSet &viewSet);
+	bool getVariance(float &variance,
+		const math::Vec3f &mean, const std::size_t viewIdx);
+
+	math::Vec3f getVarianceOfCenter(const IndexSet &viewSet);
+
+	//bool getCenterVariance(float &variance, const IndexSet &viewSet);
 
     /**  */
     bool succeeded(std::size_t v) const;
@@ -94,16 +107,11 @@ public:
     float varInMasterPatch();
 
 private:
-	bool getNormalizedCenterColor(math::Vec3f &normalizedColor,
-		const std::size_t viewIdx);
+	//bool getNormalizedCenterColor(math::Vec3f &normalizedColor,
+	//	const std::size_t viewIdx);
 
 	mve::ByteImage::ConstPtr getNeighborImage(int &mipmapLevel,
 		const std::size_t v) const;
-
-	bool getMean(math::Vec3f &mean,
-		const std::size_t v);
-	bool getVariance(float &variance,
-		const math::Vec3f &mean, const std::size_t v);
 
 private:
     std::vector<SingleView::Ptr> const& views;

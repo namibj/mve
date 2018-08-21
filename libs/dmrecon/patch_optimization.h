@@ -56,6 +56,8 @@ public:
 
 private:
 	float getMeanNCC(PatchSampler::Ptr &sampler) const;
+	//bool hasBadMatchingCenter();
+	bool isUnreliable();
 
 private:
     std::vector<SingleView::Ptr> const& views;

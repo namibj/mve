@@ -126,11 +126,21 @@ float PatchOptimization::computeConfidence()
 	if (dotP < 0.2f) // magic number 42
 		return 0.f;
 
-	// result which seems reliable?
-	float meanNCC = getMeanNCC(sampler);
+	const float meanNCC = getMeanNCC(sampler);
 	if (meanNCC < settings.acceptNCC)
 		return 0.f;
 
+	if (isUnreliable())
+		return 0.f;
+
+	// normalize meanNCC relative to minimum required NCC
+	const float range = 1.f - settings.acceptNCC;
+	const float score = (meanNCC - settings.acceptNCC) / range;
+    return score;
+}
+
+bool PatchOptimization::isUnreliable()
+{
 	// avoid overestimation (false depth estimates outside the visible boundary of the object structure) using a smaller patch size
 	// if this truly is a good estimate then a smaller estimate must also have a good NCC score
 	if (settings.filterWidth > 3)
@@ -139,26 +149,55 @@ float PatchOptimization::computeConfidence()
 		PatchSampler::Ptr smallSampler = PatchSampler::create(views, settings.refViewNr,
 			smallWidth, midx, midy, depth, dzI, dzJ);
 		if (!smallSampler)
-			return 0.f;
+			return true;
 
-		meanNCC = getMeanNCC(smallSampler);
+		const float meanNCC = getMeanNCC(smallSampler);
 		if (meanNCC < settings.acceptNCC)
-			return 0.f;
-
-
-		float variance;
-		if (!smallSampler->getCenterVariance(variance, localVS.getSelectedIDs()))
-			return 0.f;
-		int tmp = 42;
-		++tmp;
+			return true;
 	}
 
-	// normalize meanNCC w.r.t. minimum required NCC
-	const float range = 1.f - settings.acceptNCC;
-	const float score = (meanNCC - settings.acceptNCC) / range;
+//	const float threshold = 0.001f;
+//	const IndexSet &localNeighbors = localVS.getSelectedIDs();
+//	const math::Vec3f variance = sampler->getVarianceOfCenter(localNeighbors);
+//	for (int i = 0; i < 3; ++i)
+//		if (variance[i] >= threshold)
+//			return true;
+//	return hasBadMatchingCenter();
 
-    return score;
+	return false;
 }
+
+
+//bool PatchOptimization::hasBadMatchingCenter()
+//{
+//	// check matching center
+//	const float EPSILON = 10e-5f;
+
+//	const IndexSet &localViewSet = localVS.getSelectedIDs();
+//	const std::size_t refViewIdx = settings.refViewNr;
+//	math::Vec2f mean(0.f, 0.f);
+//	float sumOfWeights = 0.f;
+
+//	for (IndexSet::const_iterator i = localViewSet.begin(); i != localViewSet.end(); ++i)
+//	{
+//		if (*i == refViewIdx)
+//			continue;
+
+//		math::Vec2f center;
+//		float crossCorrelation;
+//		const std::size_t viewIndices[2] = { *i, refViewIdx };
+//		if (!sampler->getNCCCenter(center, crossCorrelation, viewIndices, EPSILON))
+//			continue;
+
+//		mean += center.abs_valued() * crossCorrelation;
+//		sumOfWeights += crossCorrelation;
+//	}
+//	if (EPSILON > sumOfWeights)
+//		return true;
+
+//	mean /= sumOfWeights;
+//	return (mean[0] > 0.75f || mean[1] > 0.75f);
+//}
 
 float PatchOptimization::getMeanNCC(PatchSampler::Ptr &sampler) const
 {

@@ -256,66 +256,140 @@ PatchSampler::getSAD(std::size_t v, math::Vec3f const& cs)
 	return sum;
 }
 
-bool PatchSampler::getCenterVariance(float &variance, const IndexSet &viewSet)
+//bool PatchSampler::getCenterVariance(float &variance, const IndexSet &viewSet)
+//{
+//	std::vector<math::Vec3f> normalizedColors;
+//	normalizedColors.reserve(viewSet.size() + 1);
+
+//	// get normalized colors of center pixels of images from viewSet
+//	math::Vec3f normalizedColor;
+//	for (IndexSet::const_iterator id = viewSet.begin(); id != viewSet.end(); ++id)
+//	{
+//		const int viewIdx = *id;
+//		if (getNormalizedCenterColor(normalizedColor, viewIdx))
+//			normalizedColors.push_back(normalizedColor);
+//	}
+//	if (getNormalizedCenterColor(normalizedColor, refVIdx))
+//		normalizedColors.push_back(normalizedColor);
+
+//	// get & check number of normalized colors
+//	const std::size_t colorCount = normalizedColors.size();
+//	if (colorCount <= 3) // magic number 42
+//		return false;
+
+//	// compute mean & variance of normalized colors
+//	math::Vec3f meanOfCenter(0.0f, 0.0f, 0.0f);
+//	for (std::size_t i = 0; i < colorCount; ++i)
+//		meanOfCenter += normalizedColors[i];
+//	meanOfCenter /= static_cast<float>(colorCount);
+
+//	variance = 0.0f;
+//	for (std::size_t i = 0; i < colorCount; ++i)
+//		variance += (normalizedColors[i] - meanOfCenter).square_norm();
+//	variance /= static_cast<float>(colorCount);
+
+//	return true;
+//}
+
+math::Vec3f PatchSampler::getVarianceOfCenter(const IndexSet &localNeighbors)
 {
-	std::vector<math::Vec3f> normalizedColors;
-	normalizedColors.reserve(viewSet.size() + 1);
+	const std::size_t count = localNeighbors.size();
+	const math::Vec3f refCenterColor = getColorOfCenter(refVIdx);
 
-	// get normalized colors of center pixels of images from viewSet
-	math::Vec3f normalizedColor;
-	for (IndexSet::const_iterator id = viewSet.begin(); id != viewSet.end(); ++id)
+	// mean
+	math::Vec3f mean(refCenterColor);
+	for (IndexSet::const_iterator it = localNeighbors.begin(); it != localNeighbors.end(); ++it)
 	{
-		const int viewIdx = *id;
-		if (getNormalizedCenterColor(normalizedColor, viewIdx))
-			normalizedColors.push_back(normalizedColor);
+		const std::size_t viewIdx = *it;
+		const math::Vec3f color = getColorOfCenter(viewIdx);
+		mean += color;
 	}
-	if (getNormalizedCenterColor(normalizedColor, refVIdx))
-		normalizedColors.push_back(normalizedColor);
+	mean /= (count + 1);
 
-	// get & check number of normalized colors
-	const std::size_t colorCount = normalizedColors.size();
-	if (colorCount <= 3) // magic number 42
-		return false;
+	// unbiased variance
+	const math::Vec3f refDiff(refCenterColor - mean);
+	math::Vec3f variance = refDiff.cw_mult(refDiff);
 
+	for (IndexSet::const_iterator it = localNeighbors.begin(); it != localNeighbors.end(); ++it)
+	{
+		const std::size_t viewIdx = *it;
+		const math::Vec3f color = getColorOfCenter(viewIdx);
+		const math::Vec3f temp(color - mean);
+		const math::Vec3f tempSq(temp.cw_mult(temp));
+		variance += tempSq;
+	}
 
-	// compute mean & variance of normalized colors
-	math::Vec3f meanOfCenter(0.0f, 0.0f, 0.0f);
-	for (std::size_t i = 0; i < colorCount; ++i)
-		meanOfCenter += normalizedColors[i];
-	meanOfCenter /= static_cast<float>(colorCount);
-
-	variance = 0.0f;
-	for (std::size_t i = 0; i < colorCount; ++i)
-		variance += (normalizedColors[i] - meanOfCenter).square_norm();
-	variance /= static_cast<float>(colorCount);
-
-	return true;
+	// unbiased variance
+	variance /= count;
+	return variance;
 }
 
-bool PatchSampler::getNormalizedCenterColor(math::Vec3f &normalizedColor,
-	const std::size_t viewIdx)
+math::Vec3f PatchSampler::getColorOfCenter(const std::size_t viewIdx) const
 {
 	// get proper image
 	int mipmapLevel;
 	mve::ByteImage::ConstPtr img = getNeighborImage(mipmapLevel, viewIdx);
 	if (!img)
-		return false;
-
-	// get mean color & variance
-	math::Vec3f mean;
-	float variance;
-	if (!getMean(mean, viewIdx))
-		return false;
-	if (!getVariance(variance, mean, viewIdx))
-		return false;
+		return math::Vec3f(1000, 10000, 100000);
 
 	// get center color
 	const math::Vec3f &centerWS = patchPoints[nrSamples/2];
 	const math::Vec2f centerVS = views[viewIdx]->worldToScreen(centerWS, mipmapLevel);
 	const math::Vec3f color = getXYZColorAtPos(*img, centerVS);
+	return color;
+}
 
-	// normalize color
-	normalizedColor = (color - mean) / (variance); // todo magic constant 42
+bool PatchSampler::getNCCCenter(math::Vec2f &distance, float &crossCorrelation,
+	const std::size_t viewIndices[2], const float EPSILON)
+{
+	math::Vec3f means[2];
+	float variances[2];
+	for (int i = 0; i < 2; ++i)
+	{
+		if (!getMean(means[i], viewIndices[i]))
+			return false;
+		if (!getVariance(variances[i], means[i], viewIndices[i]))
+			return false;
+	}
+
+	// matching center via cross correlation weights
+	math::Vec2f weightedCenter(0.f, 0.f);
+	float sumOfWeights = 0.f;
+
+	int halfWidth = static_cast<int>(offset);
+	int x = -halfWidth;
+	int y = -halfWidth;
+	for (std::size_t i = 0; i < nrSamples; ++i)
+	{
+		const math::Vec3f c0 = neighColorSamples[viewIndices[0]][i] - means[0];
+		const math::Vec3f c1 = neighColorSamples[viewIndices[1]][i] - means[1];
+		const float weight = c0.dot(c1);
+
+		weightedCenter += math::Vec2f(x, y) * weight;
+		sumOfWeights += weight;
+
+		// update local pixel position
+		++x;
+		if (x > halfWidth)
+		{
+			x = -halfWidth;
+			++y;
+		}
+	}
+	if (sumOfWeights < EPSILON)
+		return false;
+
+	// matching center & its magnitude
+	const math::Vec2f center = weightedCenter / sumOfWeights;
+	distance = center;
+
+	// covariance & cross correlation
+	const float covariance = sumOfWeights / nrSamples;
+	const float denominator = sqrt(variances[0] * variances[1]);
+	if (denominator < EPSILON)
+		return false;
+
+	crossCorrelation = (covariance / denominator);
 	return true;
 }
 
@@ -334,16 +408,16 @@ float PatchSampler::getNCC(std::size_t u, std::size_t v)
 		return -1.f;
 	getVariance(varY, meanY, v);
 
-	// cross variance
-	float crossVariance = 0.f;
+	// covariance
+	float covariance = 0.f;
 	for (std::size_t i = 0; i < nrSamples; ++i)
-		crossVariance += (neighColorSamples[u][i] - meanX).dot(neighColorSamples[v][i] - meanY);
-	crossVariance /= nrSamples;
+		covariance += (neighColorSamples[u][i] - meanX).dot(neighColorSamples[v][i] - meanY);
+	covariance /= nrSamples;
 
 	// cross correlation
 	const float denominator = sqrt(varX * varY);
 	if (denominator > 0)
-		return (crossVariance / denominator);
+		return (covariance / denominator);
 	else
 		return -1.f;
 }
