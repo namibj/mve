@@ -1,0 +1,70 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "args": ["-c"],
+    "tasks":
+    [
+        {
+            "label": "make mve",
+            "type": "shell",
+            "command": "make",
+            "args": ["-j"],
+            "group": 
+            {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation":
+            {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": false 
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "qmake umve",
+            "type": "shell",
+            "command": "qmake-qt5",
+            "group":
+            {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["make mve"],
+            "presentation": 
+            {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": false 
+            },
+            "options":
+            {
+                "cwd": "${workspaceFolder}/apps/umve"
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "make umve",
+            "type": "shell",
+            "command": "make",
+            "args": ["-j"],
+            "group":
+            {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["qmake umve"],
+            "options":
+            {
+                "cwd": "${workspaceFolder}/apps/umve"
+            },
+            "problemMatcher": ["$gcc"] 
+        }
+    ]
+}

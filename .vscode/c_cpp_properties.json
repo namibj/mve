@@ -1,0 +1,51 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/usr/include/qt5",
+                "/usr/include/qt5/QtCore",
+                "/usr/include/qt5/QtGui",
+                "/usr/include/qt5/QtInputSupport",
+                "/usr/include/qt5/QtOpenGL",
+                "/usr/include/qt5/QtWidgets",
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/apps/",
+                "${workspaceFolder}/apps/bundle2pset",
+                "${workspaceFolder}/apps/dmrecon",
+                "${workspaceFolder}/apps/featurerecon",
+                "${workspaceFolder}/apps/fssrecon",
+                "${workspaceFolder}/apps/makescene",
+                "${workspaceFolder}/apps/mesh2pset",
+                "${workspaceFolder}/apps/meshalign",
+                "${workspaceFolder}/apps/meshclean",
+                "${workspaceFolder}/apps/meshconvert",
+                "${workspaceFolder}/apps/prebundle",
+                "${workspaceFolder}/apps/scene2pset",
+                "${workspaceFolder}/apps/sceneupgrade",
+                "${workspaceFolder}/apps/sfmrecon",
+                "${workspaceFolder}/apps/umve",
+                "${workspaceFolder}/apps/umve/images",
+                "${workspaceFolder}/apps/umve/plugins",
+                "${workspaceFolder}/apps/umve/scene_addins",
+                "${workspaceFolder}/apps/umve/scene_inspect",
+                "${workspaceFolder}/apps/umve/shaders",
+                "${workspaceFolder}/apps/umve/viewinspect",
+                "${workspaceFolder}/libs/",
+                "${workspaceFolder}/libs/dmrecon",
+                "${workspaceFolder}/libs/fssr",
+                "${workspaceFolder}/libs/math",
+                "${workspaceFolder}/libs/mve",
+                "${workspaceFolder}/libs/ogl",
+                "${workspaceFolder}/libs/sfm",
+                "${workspaceFolder}/libs/util"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
