@@ -92,7 +92,7 @@ AddinDMTriangulate::on_triangulate_clicked (void)
     mve::TriangleMesh::Ptr mesh;
     try
 	{
-		mesh = mve::geom::depthmap_triangulate(dm, ci, cam, nullptr, dd_factor);
+		mesh = mve::geom::depthmap_triangulate(dm, ci, cam, dd_factor, nullptr, nullptr);
 	}
     catch (std::exception& e)
     {
