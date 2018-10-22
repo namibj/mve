@@ -7,6 +7,9 @@
 # generated makefiles
 *.dep
 
+# build folders
+build
+
 # apps
 apps/bundle2pset/bundle2pset
 apps/dmrecon/dmrecon
