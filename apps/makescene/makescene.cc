@@ -64,6 +64,7 @@ struct AppSettings
 {
     std::string input_path;
     std::string output_path;
+    std::string image_path;
     int bundle_id = 0;
     bool import_orig = false;
     bool skip_invalid = true;
@@ -346,6 +347,9 @@ import_bundle_nvm (AppSettings const& conf)
         return;
     }
 
+    if (!conf.image_path.empty())
+        std::cerr << "Ignoring --input-images=" << conf.image_path << " since the nvm bundle defines where the images are." << std::endl;
+
     /* Create output directories. */
     std::cout << "Creating output directories..." << std::endl;
     util::fs::mkdir(conf.output_path.c_str());
@@ -442,7 +446,10 @@ import_bundle_noah_ps (AppSettings const& conf)
         bundle_fname = "synth_" + util::string::get(conf.bundle_id) + ".out";
         bundle_fname = util::fs::join_path(conf.bundle_path, bundle_fname);
         imglist_file = util::fs::join_path(conf.input_path, PS_BUNDLE_LOG);
-        image_path = util::fs::join_path(conf.input_path, PS_IMAGE_DIR);
+        if (conf.image_path.empty())
+            image_path = util::fs::join_path(conf.input_path, PS_IMAGE_DIR);
+        else
+            image_path = conf.image_path;
         undist_path = util::fs::join_path(conf.input_path, PS_UNDIST_DIR);
 
         if (util::fs::file_exists(bundle_fname.c_str()))
@@ -464,7 +471,10 @@ import_bundle_noah_ps (AppSettings const& conf)
 
         bundle_fname = util::fs::join_path(conf.bundle_path, bundle_fname);
         imglist_file = util::fs::join_path(conf.input_path, BUNDLER_FILE_LIST);
-        image_path = util::fs::join_path(conf.input_path, BUNDLER_IMAGE_DIR);
+        if (conf.image_path.empty())
+            image_path = util::fs::join_path(conf.input_path, BUNDLER_IMAGE_DIR);
+        else
+            image_path = conf.image_path;  
 
         if (util::fs::file_exists(bundle_fname.c_str()))
             bundler_fmt = BUNDLE_FORMAT_NOAH_BUNDLER;
@@ -982,6 +992,7 @@ main (int argc, char** argv)
     args.add_option('a', "append-images", false, "Appends images to an existing scene");
     args.add_option('m', "max-pixels", true, "Limit image size by iterative half-sizing");
     args.add_option('c', "init-intrinsics", true, "Initial camera intrinsics (f,k1,k2,ppx,ppy,pa)");
+    args.add_option('I', "input-images", true, "Path to the folder containing the input images if not as the default paths described above.");
     args.parse(argc, argv);
 
     /* Setup defaults. */
@@ -1007,6 +1018,8 @@ main (int argc, char** argv)
             conf.max_pixels = i->get_arg<int>();
         else if (i->opt->lopt == "init-intrinsics")
             conf.init_intrinsics = i->get_arg<std::string>();
+        else if (i->opt->lopt == "input-images")
+            conf.image_path = i->get_arg<std::string>();
         else
             throw std::invalid_argument("Unexpected option");
     }
@@ -1025,6 +1038,19 @@ main (int argc, char** argv)
         std::cerr << "Error: Cannot --append-images without --images-only."
             << std::endl;
         return EXIT_FAILURE;
+    }
+
+    if (conf.images_only && !conf.image_path.empty())
+    {
+        if (conf.input_path != conf.image_path)
+        {
+            std::cerr << "Error: Ambiguous definition of input image folder.\n";
+            std::cerr << "User defined the input folder " << conf.input_path << " via first command line argument and setting the option images-only to true.\n";
+            std::cerr << "Additionally, another input folder (" << conf.image_path << ") was defined via the input-images argument.\n";
+            std::cerr << "Please specify exactly one input folder for images.\n";
+            std::cerr << std::endl;
+            return EXIT_FAILURE;
+        }
     }
 
     /* Check if output dir exists. */
