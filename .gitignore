@@ -1,3 +1,6 @@
+# IDE files that are specific for a pc
+.vscode/launch.json
+
 # compiled objects
 *.o
 
@@ -9,6 +12,9 @@
 
 # build folders
 build
+
+# bin folder with soft links to executables
+bin
 
 # apps
 apps/bundle2pset/bundle2pset
