@@ -34,7 +34,7 @@ struct Settings
     float acceptNCC = 0.6f;
     float minRefineDiff = 0.001f;
     unsigned int maxIterations = 20;
-	unsigned int nrReconNeighbors = 6;
+    unsigned int nrReconNeighbors = 4;
     unsigned int globalVSMax = 20;
     int scale = 0;
     bool useColorScale = true;
