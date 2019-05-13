@@ -174,9 +174,9 @@ MeshInfo::get_faces_for_edge (std::size_t v1, std::size_t v2,
 {
     AdjacentFaces const& faces1 = this->vertex_info[v1].faces;
     AdjacentFaces const& faces2 = this->vertex_info[v2].faces;
-    std::set<std::size_t> faces2_set(faces2.begin(), faces2.end());
+    /* std::set<std::size_t> faces2_set(faces2.begin(), faces2.end()); */
     for (std::size_t i = 0; i < faces1.size(); ++i)
-        if (faces2_set.find(faces1[i]) != faces2_set.end())
+        if (std::find(faces2.begin(), faces2.end(), faces1[i]) != faces2.end())
             adjacent_faces->push_back(faces1[i]);
 }
 
