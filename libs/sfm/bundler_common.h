@@ -11,6 +11,7 @@
 #define SFM_BUNDLER_COMMON_HEADER
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "math/vector.h"
@@ -41,6 +42,8 @@ struct Viewport
     float focal_length;
     /** Radial distortion parameter. */
     float radial_distortion[2];
+    /** Principal point parameter. */
+    float principal_point[2];
 
     /** Camera pose for the viewport. */
     CameraPose pose;
@@ -51,6 +54,8 @@ struct Viewport
     FeatureSet features;
     /** Per-feature track ID, -1 if not part of a track. */
     std::vector<int> track_ids;
+    /** Backup map from features to tracks that were removed due to errors. */
+    std::unordered_map<int, int> backup_tracks;
 };
 
 /** The list of all viewports considered for bundling. */
@@ -163,6 +168,12 @@ void
 load_survey_from_file (std::string const& filename,
     SurveyPointList* survey_points);
 
+/* ---------------------- Feature undistortion -------------------- */
+
+math::Vec2f
+undistort_feature (math::Vec2f const& f, double const k1, double const k2,
+    float const focal_length);
+
 /* ------------------------ Implementation ------------------------ */
 
 inline
@@ -192,6 +203,7 @@ Viewport::Viewport (void)
     : focal_length(0.0f)
 {
     std::fill(this->radial_distortion, this->radial_distortion + 2, 0.0f);
+    std::fill(this->principal_point, this->principal_point + 2, 0.5f);
 }
 
 inline bool
